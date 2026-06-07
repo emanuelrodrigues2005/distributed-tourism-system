@@ -1,0 +1,31 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Review {
+  id         String   @id @default(uuid())
+  rating     Int
+  comment    String?
+  workerId   String   @map("worker_id")
+  touristId  String   @map("tourist_id")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  @@map("reviews")
+}
+
+model Interaction {
+  id         String   @id @default(uuid())
+  type       String   @default("whatsapp_click")
+  workerId   String   @map("worker_id")
+  touristId  String?  @map("tourist_id")
+  metadata   Json?
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@map("interactions")
+}

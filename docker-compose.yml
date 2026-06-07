@@ -1,0 +1,182 @@
+services:
+  # ========== INFRA ==========
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    container_name: rabbitmq
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - hub_network
+
+  postgres_db:
+    image: postgis/postgis:15-3.3-alpine
+    container_name: postgres_db
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: postgres
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./init-dbs.sql:/docker-entrypoint-initdb.d/init-dbs.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - hub_network
+
+  mongo_db:
+    image: mongo:latest
+    container_name: mongo_db
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_DATABASE: db_analytics
+    volumes:
+      - mongodata:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - hub_network
+
+  # ========== MICROSSERVIÇOS ==========
+  service-auth:
+    build:
+      context: ./service-auth
+      dockerfile: Dockerfile
+    container_name: service-auth
+    ports:
+      - "3001:3001"
+    environment:
+      NODE_ENV: development
+      PORT: "3001"
+      DATABASE_URL: "postgresql://postgres:postgres@postgres_db:5432/db_auth?schema=public"
+      RMQ_URL: "amqp://guest:guest@rabbitmq:5672"
+      JWT_SECRET: "dev-jwt-secret-change-in-production"
+    depends_on:
+      postgres_db:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - hub_network
+
+  service-catalog:
+    build:
+      context: ./service-catalog
+      dockerfile: Dockerfile
+    container_name: service-catalog
+    ports:
+      - "3002:3002"
+    environment:
+      NODE_ENV: development
+      PORT: "3002"
+      DATABASE_URL: "postgresql://postgres:postgres@postgres_db:5432/db_catalog?schema=public"
+      RMQ_URL: "amqp://guest:guest@rabbitmq:5672"
+    depends_on:
+      postgres_db:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - hub_network
+
+  service-reviews:
+    build:
+      context: ./service-reviews
+      dockerfile: Dockerfile
+    container_name: service-reviews
+    ports:
+      - "3003:3003"
+    environment:
+      NODE_ENV: development
+      PORT: "3003"
+      DATABASE_URL: "postgresql://postgres:postgres@postgres_db:5432/db_reviews?schema=public"
+      RMQ_URL: "amqp://guest:guest@rabbitmq:5672"
+    depends_on:
+      postgres_db:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - hub_network
+
+  service-curation:
+    build:
+      context: ./service-curation
+      dockerfile: Dockerfile
+    container_name: service-curation
+    ports:
+      - "3004:3004"
+    environment:
+      NODE_ENV: development
+      PORT: "3004"
+      DATABASE_URL: "postgresql://postgres:postgres@postgres_db:5432/db_curation?schema=public"
+      RMQ_URL: "amqp://guest:guest@rabbitmq:5672"
+    depends_on:
+      postgres_db:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - hub_network
+
+  service-analytics:
+    build:
+      context: ./service-analytics
+      dockerfile: Dockerfile
+    container_name: service-analytics
+    ports:
+      - "3005:3005"
+    environment:
+      NODE_ENV: development
+      PORT: "3005"
+      MONGO_URL: "mongodb://mongo_db:27017/db_analytics"
+      RMQ_URL: "amqp://guest:guest@rabbitmq:5672"
+    depends_on:
+      mongo_db:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - hub_network
+
+  # ========== FRONTEND ==========
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: frontend
+    ports:
+      - "4200:4200"
+    depends_on:
+      - service-auth
+      - service-catalog
+      - service-reviews
+      - service-curation
+      - service-analytics
+    networks:
+      - hub_network
+
+volumes:
+  pgdata:
+  mongodata:
+
+networks:
+  hub_network:
+    driver: bridge

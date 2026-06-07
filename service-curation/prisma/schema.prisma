@@ -1,0 +1,26 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum CurationStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+model CurationRequest {
+  id          String         @id @default(uuid())
+  profileId   String         @map("profile_id")
+  status      CurationStatus @default(PENDING)
+  reviewerId  String?        @map("reviewer_id")
+  notes       String?
+  createdAt   DateTime       @default(now()) @map("created_at")
+  updatedAt   DateTime       @updatedAt @map("updated_at")
+
+  @@map("curation_requests")
+}
